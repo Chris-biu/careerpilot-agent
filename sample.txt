@@ -1,0 +1,3 @@
+招聘 AI Agent 开发实习生。
+
+要求：熟悉 Python；了解大语言模型、Prompt 和 RAG；具备良好的学习能力。
