@@ -1,3 +1,4 @@
+import argparse
 import re
 
 # 复用文档读取和文本切分功能。
@@ -10,11 +11,6 @@ from rag_ingest import read_text_file, split_text
 from llm_client import ask_llm
 
 
-# 第一版演示固定读取这个 PDF 文件。
-DOCUMENT_PATH = "sample.pdf"
-
-# 第一版演示固定使用这个问题。
-QUESTION = "What does the document say about Python and RAG?"
 
 
 def extract_keywords(text: str) -> set[str]:
@@ -25,6 +21,34 @@ def extract_keywords(text: str) -> set[str]:
     # [a-z0-9]+ 表示提取连续的英文字符或数字。
     # 第一版只服务当前英文测试资料；中文语义检索会在后续 Embedding 阶段解决。
     return set(re.findall(r"[a-z0-9]+", normalized_text))
+
+
+def parse_cli_arguments(
+    arguments: list[str] | None = None,
+) -> argparse.Namespace:
+    """解析终端传入的文档路径和用户问题。"""
+
+    # 创建一个参数解析器。
+    # 它负责定义参数规则，并在格式错误时给出提示。
+    parser = argparse.ArgumentParser(
+        description="从文档中检索相关片段，并回答用户问题。",
+    )
+
+    # 第一个位置参数：要读取的文档路径。
+    parser.add_argument(
+        "document_path",
+        help="待读取的 TXT、Markdown 或 PDF 文件路径",
+    )
+
+    # 第二个位置参数：用户提出的问题。
+    parser.add_argument(
+        "question",
+        help="希望模型回答的问题",
+    )
+
+    # 测试时传入列表；实际运行时传入 None，
+    # argparse 会自动读取终端中的参数。
+    return parser.parse_args(arguments)
 
 
 def retrieve_relevant_chunks(
@@ -76,11 +100,14 @@ Question:
 
 
 def main() -> None:
-    """运行固定 PDF 和固定问题的最小 RAG 演示。"""
+    """运行用户指定文档和问题的 RAG 演示。"""
 
-    # 读取 DOCUMENT_PATH 指定的 sample.pdf，
-    # 返回 PDF 中提取出来的完整文本。
-    document_text = read_text_file(DOCUMENT_PATH)
+    # 读取用户在终端中传入的两个参数。
+    arguments = parse_cli_arguments()
+
+    # 使用用户传入的文件路径读取文档，
+    # 不再固定读取 sample.pdf。
+    document_text = read_text_file(arguments.document_path)
 
     # 把完整文本切成多个较小片段。
     # chunk_size=200：每个片段最多包含 200 个字符。
@@ -97,10 +124,10 @@ def main() -> None:
     if not chunks:
         raise ValueError("文档中没有可以检索的文本内容")
 
-    # 使用固定问题 QUESTION 对所有文本片段进行检索。
+    # 使用用户在终端中传入的问题检索相关片段。
     # 默认返回关键词重合数量最高的两个片段。
     relevant_chunks = retrieve_relevant_chunks(
-        QUESTION,
+        arguments.question,
         chunks,
     )
 
@@ -114,10 +141,9 @@ def main() -> None:
         print(f"\n--- 片段 {index} ---")
         print(chunk)
 
-    # 把“用户问题”和“检索到的资料片段”
-    # 组合成最终发送给大模型的 Prompt。
+    # 使用同一个用户问题和检索到的资料片段构造最终 Prompt。
     prompt = build_rag_prompt(
-        QUESTION,
+        arguments.question,
         relevant_chunks,
     )
 
