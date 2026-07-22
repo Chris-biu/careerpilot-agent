@@ -2,7 +2,11 @@ import unittest
 
 # 导入需要验证的检索函数和 Prompt 构造函数。
 # 这两个函数不会调用 API，因此测试可以完全离线运行。
-from rag_query import build_rag_prompt, retrieve_relevant_chunks
+from rag_query import (
+    build_rag_prompt,
+    parse_cli_arguments,
+    retrieve_relevant_chunks,
+)
 
 
 class RetrieveRelevantChunksTests(unittest.TestCase):
@@ -54,6 +58,29 @@ class RetrieveRelevantChunksTests(unittest.TestCase):
         # 检查 Prompt 没有丢失问题或作为依据的资料。
         self.assertIn(question, prompt)
         self.assertIn(context_chunks[0], prompt)
+
+
+class ParseCliArgumentsTests(unittest.TestCase):
+    """测试：程序能够读取终端传入的文件路径和问题。"""
+
+    def test_parses_document_path_and_question(self) -> None:
+        """两个命令行参数应该被分别保存。"""
+
+        # 这个列表模拟用户在终端中传入的两个参数。
+        arguments = parse_cli_arguments(
+            [
+                "sample.pdf",
+                "What does the document mention?",
+            ]
+        )
+
+        # 检查文件路径和问题没有混淆或丢失。
+        self.assertEqual(arguments.document_path, "sample.pdf")
+        self.assertEqual(
+            arguments.question,
+            "What does the document mention?",
+        )
+
 
 if __name__ == "__main__":
     # 允许直接运行此文件时也执行测试。
