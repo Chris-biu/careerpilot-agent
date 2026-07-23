@@ -1,4 +1,10 @@
 import unittest
+from argparse import Namespace
+from contextlib import redirect_stdout
+from io import StringIO
+from unittest.mock import patch
+
+import rag_query
 
 # 导入需要验证的检索函数和 Prompt 构造函数。
 # 这两个函数不会调用 API，因此测试可以完全离线运行。
@@ -80,6 +86,80 @@ class ParseCliArgumentsTests(unittest.TestCase):
             arguments.question,
             "What does the document mention?",
         )
+
+
+class FormatSourceCitationsTests(unittest.TestCase):
+    """测试：回答能够明确展示资料来源和对应的检索片段。"""
+
+    def test_formats_document_name_and_chunk_numbers(self) -> None:
+        """引用文本应该包含文件名，以及从 1 开始的片段编号。"""
+
+        # 模拟程序从 sample.pdf 中检索出了两个相关片段。
+        # 测试只验证引用格式，不读取文件，也不会调用大模型 API。
+        citations = rag_query.format_source_citations(
+            "documents/sample.pdf",
+            chunk_count=2,
+        )
+
+        # 用户必须能明确看见这是引用来源，而不是普通回答内容。
+        self.assertIn("引用来源：", citations)
+
+        # 只显示文件名可以避免把用户电脑上的完整目录暴露到输出中。
+        self.assertIn("sample.pdf", citations)
+        self.assertNotIn("documents/sample.pdf", citations)
+
+        # 两个检索片段都应该拥有可见编号，方便对应上方打印的片段。
+        self.assertIn("检索片段 1", citations)
+        self.assertIn("检索片段 2", citations)
+
+
+class MainOutputTests(unittest.TestCase):
+    """测试：完整问答流程会把引用来源打印到终端。"""
+
+    def test_prints_source_citations_after_model_answer(self) -> None:
+        """模型回答之后应该显示来源文件和检索片段编号。"""
+
+        # StringIO 是内存中的文本缓冲区。
+        # redirect_stdout() 会把 print() 的内容临时写入这里，
+        # 让测试可以检查终端输出，而不用真正打开另一个终端。
+        terminal_output = StringIO()
+
+        # main() 原本会读取文件并调用 DeepSeek。
+        # 测试用固定返回值替换这些外部操作，避免访问磁盘和消耗 API 额度；
+        # 检索、Prompt 构造和最终打印流程仍然运行真实代码。
+        with (
+            patch.object(
+                rag_query,
+                "parse_cli_arguments",
+                return_value=Namespace(
+                    document_path="documents/sample.pdf",
+                    question="Which technology is mentioned?",
+                ),
+            ),
+            patch.object(
+                rag_query,
+                "read_text_file",
+                return_value="The document mentions Python.",
+            ),
+            patch.object(
+                rag_query,
+                "split_text",
+                return_value=["The document mentions Python."],
+            ),
+            patch.object(
+                rag_query,
+                "ask_llm",
+                return_value="Python is mentioned.",
+            ),
+            redirect_stdout(terminal_output),
+        ):
+            rag_query.main()
+
+        output = terminal_output.getvalue()
+
+        # 这两个断言证明引用不仅被生成，而且真正出现在最终输出中。
+        self.assertIn("引用来源：", output)
+        self.assertIn("sample.pdf（检索片段 1）", output)
 
 
 if __name__ == "__main__":

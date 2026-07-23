@@ -1,5 +1,6 @@
 import argparse
 import re
+from pathlib import Path
 
 # 复用文档读取和文本切分功能。
 # 这些功能已经在 rag_ingest.py 中实现，
@@ -9,8 +10,6 @@ from rag_ingest import read_text_file, split_text
 # 复用 DeepSeek 模型调用功能。
 # ask_llm() 会负责把 Prompt 发送给大模型。
 from llm_client import ask_llm
-
-
 
 
 def extract_keywords(text: str) -> set[str]:
@@ -49,6 +48,28 @@ def parse_cli_arguments(
     # 测试时传入列表；实际运行时传入 None，
     # argparse 会自动读取终端中的参数。
     return parser.parse_args(arguments)
+
+
+def format_source_citations(
+    document_path: str,
+    chunk_count: int,
+) -> str:
+    """生成面向用户的引用来源文本。"""
+
+    # Path.name 只保留路径末尾的文件名。
+    # 例如 documents/sample.pdf 会变成 sample.pdf，
+    # 这样既能说明资料来源，也不会暴露用户电脑上的完整目录。
+    document_name = Path(document_path).name
+
+    # range() 默认从 0 开始，但终端中展示的检索片段从 1 开始编号。
+    # 因此这里显式使用 1 作为起点，并让终点比片段数量多 1。
+    citation_lines = [
+        f"- {document_name}（检索片段 {index}）"
+        for index in range(1, chunk_count + 1)
+    ]
+
+    # 把标题和每一条来源用换行符连接，形成便于阅读的结构化文本。
+    return "引用来源：\n" + "\n".join(citation_lines)
 
 
 def retrieve_relevant_chunks(
@@ -155,6 +176,17 @@ def main() -> None:
     # 开头的 \n 会先换行，让终端输出更容易阅读。
     print("\n模型回答：")
     print(answer)
+
+    # 根据用户传入的文档路径和实际检索到的片段数量，
+    # 生成结构化引用，让用户知道回答使用了哪个文件中的哪些片段。
+    source_citations = format_source_citations(
+        arguments.document_path,
+        chunk_count=len(relevant_chunks),
+    )
+
+    # 把引用放在模型回答之后，作为回答依据的独立区域。
+    # 开头先换行，避免引用标题紧贴在回答最后一行后面。
+    print(f"\n{source_citations}")
 
 
 # Python 直接运行这个文件时，特殊变量 __name__
